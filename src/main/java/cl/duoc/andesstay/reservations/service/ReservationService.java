@@ -8,8 +8,12 @@ import cl.duoc.andesstay.reservations.exception.ReservationNotFoundException;
 import cl.duoc.andesstay.reservations.exception.UnitNotAvailableException;
 import cl.duoc.andesstay.reservations.model.EstadoReserva;
 import cl.duoc.andesstay.reservations.model.Reservation;
+import cl.duoc.andesstay.reservations.producer.ReportEventMessage;
+import cl.duoc.andesstay.reservations.producer.ReportEventProducer;
 import cl.duoc.andesstay.reservations.repository.ReservationRepository;
 import cl.duoc.andesstay.reservations.repository.ReservationSpecifications;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -19,9 +23,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class ReservationService {
+
+    private static final Logger log = LoggerFactory.getLogger(ReservationService.class);
 
     // Estados que efectivamente bloquean una unidad para otras reservas.
     private static final List<EstadoReserva> ESTADOS_QUE_BLOQUEAN =
@@ -30,21 +37,24 @@ public class ReservationService {
     private final ReservationRepository repository;
     private final CatalogClient catalogClient;
     private final ReservationEventPublisher eventPublisher;
+    private final ReportEventProducer reportEventProducer;
 
     public ReservationService(ReservationRepository repository, CatalogClient catalogClient,
-                               ReservationEventPublisher eventPublisher) {
+                               ReservationEventPublisher eventPublisher,
+                               ReportEventProducer reportEventProducer) {
         this.repository = repository;
         this.catalogClient = catalogClient;
         this.eventPublisher = eventPublisher;
+        this.reportEventProducer = reportEventProducer;
     }
 
     @Transactional
-    public Reservation crear(ReservationRequestDto request, String guestId) {
+    public Reservation crear(ReservationRequestDto request, String guestId, String bearerToken) {
         if (!request.checkOut().isAfter(request.checkIn())) {
             throw new InvalidReservationStateException("La fecha de checkOut debe ser posterior a checkIn.");
         }
 
-        UnitDto unit = catalogClient.findById(request.unitId())
+        UnitDto unit = catalogClient.findById(request.unitId(), bearerToken)
                 .orElseThrow(() -> new UnitNotAvailableException(
                         "No existe la unidad " + request.unitId() + " en el catalogo."));
 
@@ -80,6 +90,7 @@ public class ReservationService {
 
         Reservation guardada = repository.save(reservation);
         eventPublisher.publicar(guardada, guestId);
+        publicarEventoReporteria(guardada, guestId);
         return guardada;
     }
 
@@ -110,6 +121,7 @@ public class ReservationService {
         exigirEstado(reservation, EstadoReserva.PENDIENTE, EstadoReserva.CONFIRMADA);
         reservation.setEstado(EstadoReserva.CONFIRMADA);
         eventPublisher.publicar(reservation, actor);
+        publicarEventoReporteria(reservation, actor);
         return reservation;
     }
 
@@ -119,6 +131,7 @@ public class ReservationService {
         exigirEstado(reservation, EstadoReserva.CONFIRMADA, EstadoReserva.CHECKIN);
         reservation.setEstado(EstadoReserva.CHECKIN);
         eventPublisher.publicar(reservation, actor);
+        publicarEventoReporteria(reservation, actor);
         return reservation;
     }
 
@@ -128,6 +141,7 @@ public class ReservationService {
         exigirEstado(reservation, EstadoReserva.CHECKIN, EstadoReserva.CHECKOUT);
         reservation.setEstado(EstadoReserva.CHECKOUT);
         eventPublisher.publicar(reservation, actor);
+        publicarEventoReporteria(reservation, actor);
         return reservation;
     }
 
@@ -142,6 +156,7 @@ public class ReservationService {
         }
         reservation.setEstado(EstadoReserva.CANCELADA);
         eventPublisher.publicar(reservation, actor);
+        publicarEventoReporteria(reservation, actor);
         return reservation;
     }
 
@@ -155,6 +170,32 @@ public class ReservationService {
             throw new InvalidReservationStateException(
                     "No se puede pasar la reserva a " + siguiente + " desde " + reservation.getEstado()
                             + " (se esperaba que estuviera en " + esperado + ").");
+        }
+    }
+
+    private void publicarEventoReporteria(Reservation reservation, String actor) {
+        try {
+            long noches = ChronoUnit.DAYS.between(
+                reservation.getCheckIn(), reservation.getCheckOut());
+            ReportEventMessage evento = new ReportEventMessage(
+                UUID.randomUUID().toString(),
+                reservation.getEstado().tipoEvento(),
+                java.time.Instant.now(),
+                reservation.getId().toString(),
+                reservation.getUnitId(),
+                reservation.getGuestId(),
+                reservation.getEstado().name(),
+                reservation.getGuestsCount(),
+                noches,
+                reservation.getPricePerNight(),
+                reservation.getTotalPrice(),
+                actor,
+                UUID.randomUUID().toString()
+            );
+            reportEventProducer.publicar(evento);
+        } catch (Exception e) {
+            log.error("No se pudo publicar evento de reporteria para reserva {}: {}",
+                reservation.getId(), e.getMessage());
         }
     }
 }
