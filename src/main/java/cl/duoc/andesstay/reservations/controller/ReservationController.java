@@ -45,7 +45,7 @@ public class ReservationController {
     @ResponseStatus(HttpStatus.CREATED)
     public ReservationResponseDto crear(@Valid @RequestBody ReservationRequestDto request,
                                          @AuthenticationPrincipal Jwt jwt) {
-        Reservation reservation = service.crear(request, actor(jwt));
+        Reservation reservation = service.crear(request, actor(jwt), jwt.getTokenValue());
         return ReservationResponseDto.from(reservation);
     }
 

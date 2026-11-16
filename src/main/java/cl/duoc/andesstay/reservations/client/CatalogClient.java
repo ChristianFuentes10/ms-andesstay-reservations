@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import java.time.Duration;
 import java.util.Optional;
 
 /**
@@ -26,13 +27,20 @@ public class CatalogClient {
      * responde 404. Cualquier otro error (catalogo caido, timeout, 5xx) se
      * deja propagar para que el GlobalExceptionHandler lo traduzca en 502.
      */
-    public Optional<UnitDto> findById(Long unitId) {
+    /**
+     * bearerToken es el JWT crudo (sin el prefijo "Bearer ") del usuario que
+     * hizo la request original. Catalog exige el mismo JWT de Cognito que
+     * Reservations, asi que hay que reenviarlo explicitamente: WebClient no
+     * copia el header Authorization entrante de forma automatica.
+     */
+    public Optional<UnitDto> findById(Long unitId, String bearerToken) {
         try {
             UnitDto unit = catalogWebClient.get()
                     .uri("/api/catalog/units/{id}", unitId)
+                    .header("Authorization", "Bearer " + bearerToken)
                     .retrieve()
                     .bodyToMono(UnitDto.class)
-                    .block();
+                    .block(Duration.ofSeconds(5));
             return Optional.ofNullable(unit);
         } catch (WebClientResponseException.NotFound e) {
             return Optional.empty();
