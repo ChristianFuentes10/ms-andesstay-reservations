@@ -1,0 +1,82 @@
+# Prometheus + Grafana + kafka-exporter para AndesStay
+# Requisito: docker network create andesstay-net
+# Requisito: Kafka debe estar corriendo (infra/kafka/docker-compose.yml)
+version: "3.9"
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: andesstay-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--storage.tsdb.retention.time=15d"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - andesstay-net
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: andesstay-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin123}
+      GF_SECURITY_ADMIN_USER: admin
+      # Permitir embedding en iframe (para el frontend Angular)
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_ANONYMOUS_ORG_NAME: Main Org.
+      GF_SECURITY_COOKIE_SAMESITE: disabled
+      # PostgreSQL para datasource
+      GF_DB_HOST: ${GF_DB_HOST:-host.docker.internal:5432}
+      GF_DB_NAME: ${GF_DB_NAME:-andesstay_reservations}
+      GF_DB_USER: ${GF_DB_USER:-postgres}
+      GF_DB_PASSWORD: ${GF_DB_PASSWORD:-postgres}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - andesstay-net
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: andesstay-kafka-exporter
+    restart: unless-stopped
+    command:
+      - "--kafka.server=kafka-1:29092"
+      - "--kafka.server=kafka-2:29093"
+    ports:
+      - "9308:9308"
+    depends_on:
+      - prometheus
+    networks:
+      - andesstay-net
+
+networks:
+  andesstay-net:
+    external: true
+
+volumes:
+  prometheus-data:
+  grafana-data:

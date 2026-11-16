@@ -1,0 +1,27 @@
+# Configuracion de Prometheus para AndesStay
+# En EC2: cambiar los targets de 'host.docker.internal' por la IP/DNS de los servicios
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Metricas de la aplicacion ms-andesstay-reservations
+  - job_name: "ms-andesstay-reservations"
+    metrics_path: /actuator/prometheus
+    static_configs:
+      # En local usa host.docker.internal; en EC2 usa el DNS/IP del servicio
+      - targets: ["host.docker.internal:8082"]
+        labels:
+          instance: "reservations-local"
+
+  # Metricas de los brokers Kafka
+  - job_name: "kafka-exporter"
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+        labels:
+          instance: "kafka-local"
+
+  # El propio Prometheus
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

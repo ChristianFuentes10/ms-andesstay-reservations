@@ -1,0 +1,24 @@
+apiVersion: 1
+
+datasources:
+  # Fuente de datos Prometheus para metricas tecnicas
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+
+  # Fuente de datos PostgreSQL para KPIs de negocio
+  - name: PostgreSQL
+    type: postgres
+    url: ${GF_DB_HOST:-localhost:5432}
+    database: ${GF_DB_NAME:-andesstay_reservations}
+    user: ${GF_DB_USER:-postgres}
+    secureJsonData:
+      password: ${GF_DB_PASSWORD:-postgres}
+    jsonData:
+      sslmode: "disable"
+      postgresVersion: 1500
+      timescaledb: false
+    editable: false
