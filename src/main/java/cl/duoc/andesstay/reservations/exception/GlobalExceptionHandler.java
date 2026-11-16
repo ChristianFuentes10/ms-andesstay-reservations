@@ -10,7 +10,10 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import org.apache.kafka.common.errors.TopicExistsException;
+import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 /**
@@ -66,6 +69,25 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_GATEWAY.value(),
                 "bad_gateway",
                 "No fue posible comunicarse con el microservicio de catalogo.",
+                request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body);
+    }
+
+    /**
+     * .block(Duration) de CatalogClient lanza esto (no WebClientRequestException)
+     * cuando el timeout se agota sin que catalog responda. Sin este handler,
+     * el timeout evita el cuelgue infinito pero termina en un 500 sin formato.
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ErrorResponse> handleBlockTimeout(IllegalStateException ex,
+                                                              HttpServletRequest request) {
+        if (ex.getMessage() == null || !ex.getMessage().contains("Timeout on blocking read")) {
+            throw ex; // no es el timeout que esperamos: no lo escondamos
+        }
+        ErrorResponse body = ErrorResponse.of(
+                HttpStatus.BAD_GATEWAY.value(),
+                "bad_gateway",
+                "El microservicio de catalogo no respondio a tiempo.",
                 request.getRequestURI());
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body);
     }
