@@ -1,5 +1,6 @@
 package cl.duoc.andesstay.reservations.security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
@@ -14,14 +15,26 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
- * Roles del dominio de reservas: ADMIN, RECEPCIONISTA, HUESPED (mismos
- * grupos del User Pool de Cognito que usa el resto de los microservicios).
+ * Extrae los roles del JWT de Cognito (claim cognito:groups) y los mapea a
+ * GrantedAuthorities con prefijo ROLE_.
+ *
+ * Si el token es valido pero no trae el claim cognito:groups (usuario recien
+ * registrado que aun no fue asignado a ningun grupo), se le asigna el rol
+ * DEFAULT_ROLE (configurable, por defecto HUESPED). Esto permite que los
+ * huespedes recien registrados puedan crear reservas sin un 403.
+ *
+ * Para asignar rol ADMIN: en Cognito Console > User Pool > Users,
+ * seleccionar el usuario y agregarlo al grupo "ADMIN".
  */
 @Component
 public class CognitoJwtAuthenticationConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 
     private static final String GROUPS_CLAIM = "cognito:groups";
     private static final String ROLE_PREFIX = "ROLE_";
+
+    /** Rol asignado a usuarios sin grupos en Cognito (variable DEFAULT_ROLE). */
+    @Value("${security.default-role:HUESPED}")
+    private String defaultRole;
 
     @Override
     public AbstractAuthenticationToken convert(Jwt jwt) {
@@ -31,8 +44,9 @@ public class CognitoJwtAuthenticationConverter implements Converter<Jwt, Abstrac
 
     private Collection<GrantedAuthority> extractRoles(Jwt jwt) {
         List<String> groups = jwt.getClaimAsStringList(GROUPS_CLAIM);
-        if (groups == null) {
-            return List.of();
+        if (groups == null || groups.isEmpty()) {
+            // Usuario autenticado pero sin grupos asignados: asignar rol por defecto
+            return List.of(new SimpleGrantedAuthority(ROLE_PREFIX + defaultRole.toUpperCase()));
         }
         return groups.stream()
                 .filter(Objects::nonNull)
