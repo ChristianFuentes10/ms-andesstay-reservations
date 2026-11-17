@@ -8,3 +8,6 @@ replay_pid*.log
 *.log
 **/data/
 docker-volumes/
+infra/local-stack/.env
+login.json
+token.txt
