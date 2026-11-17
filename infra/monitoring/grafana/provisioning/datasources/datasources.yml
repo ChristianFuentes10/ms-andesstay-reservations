@@ -12,11 +12,11 @@ datasources:
   # Fuente de datos PostgreSQL para KPIs de negocio
   - name: PostgreSQL
     type: postgres
-    url: ${GF_DB_HOST:-localhost:5432}
-    database: ${GF_DB_NAME:-andesstay_reservations}
-    user: ${GF_DB_USER:-postgres}
+    url: ${GF_DB_HOST}
+    database: ${GF_DB_NAME}
+    user: ${GF_DB_USER}
     secureJsonData:
-      password: ${GF_DB_PASSWORD:-postgres}
+      password: ${GF_DB_PASSWORD}
     jsonData:
       sslmode: "disable"
       postgresVersion: 1500
