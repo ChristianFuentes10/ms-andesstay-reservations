@@ -11,11 +11,12 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
       ZOOKEEPER_SYNC_LIMIT: 2
+      KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=*"
     volumes:
       - zookeeper-data:/var/lib/zookeeper/data
       - zookeeper-logs:/var/lib/zookeeper/log
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181 | grep imok"]
+      test: ["CMD", "bash", "-c", "echo srvr | nc localhost 2181 | grep Mode"]
       interval: 10s
       timeout: 5s
       retries: 5
